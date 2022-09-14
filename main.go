@@ -36,8 +36,10 @@ func main() {
 			message := c.Errors.Last().Error()
 			c.IndentedJSON(http.StatusInternalServerError, message)
 		},
-		PostLogoutUrl: *logoutUrl, // Mind you, the gin-oidc code assumes the Idp _ALWAYS_ uses /protocol/openid-connect/logout to log out. This is not the case... .
+		// Mind you, the gin-oidc code assumes the Idp _ALWAYS_ uses /protocol/openid-connect/logout to log out. This is not the case... .
 		// If your Idp doesn't, logging out will crash your code. Relevant code is at https://github.com/dakario/gin-oidc/blob/master/ginoidc.go#L75
+		// A refactor of that lib can fix that
+		PostLogoutUrl: *logoutUrl,
 	}
 
 	// To protect all endpoints
@@ -53,10 +55,25 @@ func main() {
 }
 
 func getPublic(ctx *gin.Context) {
-	ctx.IndentedJSON(http.StatusOK, "public")
+
+	username := getAuthenticatedUser(ctx)
+	if username == "" {
+		ctx.IndentedJSON(http.StatusOK, "Public Endpoint - no user logged in")
+	} else {
+		message := fmt.Sprintf("Public Endpoint - '%v' logged in", username)
+		ctx.IndentedJSON(http.StatusOK, message)
+	}
 }
 
 func getProtected(ctx *gin.Context) {
+
+	username := getAuthenticatedUser(ctx)
+	message := fmt.Sprintf("Protected Endpoint! User '%v' is authorized", username)
+
+	ctx.IndentedJSON(http.StatusOK, message)
+}
+
+func getAuthenticatedUser(ctx *gin.Context) string {
 	// Get the Claims we're returning
 	serverSession := sessions.Default(ctx)
 	claims := serverSession.Get("oidcClaims")
@@ -67,8 +84,9 @@ func getProtected(ctx *gin.Context) {
 		json.Unmarshal([]byte(claims.(string)), &ss)
 
 		username := ss["sub"]
-		message := fmt.Sprintf("Protected Endpoint! User %v is Authorized!", username)
 
-		ctx.IndentedJSON(http.StatusOK, message)
+		return username
 	}
+
+	return ""
 }
